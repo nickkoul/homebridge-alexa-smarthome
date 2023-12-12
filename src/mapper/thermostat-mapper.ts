@@ -1,5 +1,5 @@
 import { constant } from 'fp-ts/lib/function';
-import type { Characteristic } from 'homebridge';
+import { Characteristic, CharacteristicValue } from 'homebridge';
 import { match } from 'ts-pattern';
 import { CapabilityState } from '../domain/alexa';
 
@@ -12,3 +12,29 @@ export const mapAlexaModeToHomeKit = (
     .with('COOL', constant(characteristic.TargetHeatingCoolingState.COOL))
     .with('AUTO', constant(characteristic.TargetHeatingCoolingState.AUTO))
     .otherwise(constant(characteristic.TargetHeatingCoolingState.OFF));
+
+export const mapAlexaHeatingStatusToHomeKit = (
+  value: CapabilityState['value'],
+  characteristic: typeof Characteristic,
+) =>
+  match(value)
+    .with('OFF', constant(characteristic.TargetHeatingCoolingState.OFF))
+    .otherwise(constant(characteristic.TargetHeatingCoolingState.HEAT));
+
+export const mapAlexaCoolingStatusToHomeKit = (
+  value: CapabilityState['value'],
+  characteristic: typeof Characteristic,
+) =>
+  match(value)
+    .with('OFF', constant(characteristic.TargetHeatingCoolingState.OFF))
+    .otherwise(constant(characteristic.TargetHeatingCoolingState.COOL));
+
+export const mapHomeKitModetoAlexa = (
+  value: CharacteristicValue,
+  characteristic: typeof Characteristic,
+) =>
+  match(value)
+    .with(characteristic.TargetHeatingCoolingState.HEAT, constant('HEAT'))
+    .with(characteristic.TargetHeatingCoolingState.COOL, constant('COOL'))
+    .with(characteristic.TargetHeatingCoolingState.AUTO, constant('AUTO'))
+    .with(characteristic.TargetHeatingCoolingState.OFF, constant('OFF'));

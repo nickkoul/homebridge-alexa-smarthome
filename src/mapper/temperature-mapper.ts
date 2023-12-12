@@ -8,6 +8,7 @@ import {
   isTemperatureValue,
 } from '../domain/alexa/temperature';
 import * as util from '../util';
+import { isHumidityValue } from '../domain/alexa/humidity';
 
 export const mapAlexaTempToHomeKit = (state: CapabilityState['value']) => {
   if (isTemperatureValue(state)) {
@@ -16,6 +17,14 @@ export const mapAlexaTempToHomeKit = (state: CapabilityState['value']) => {
         .with('FAHRENHEIT', () => util.round((state.value - 32) / 1.8, 1))
         .otherwise(constant(state.value)),
     );
+  } else {
+    return O.none;
+  }
+};
+
+export const mapAlexaHumidToHomeKit = (state: CapabilityState['value']) => {
+  if (isHumidityValue(state)) {
+    return O.of(state);
   } else {
     return O.none;
   }

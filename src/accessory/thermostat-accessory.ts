@@ -39,26 +39,34 @@ export default class ThermostatAccessory extends BaseAccessory {
         this.device.displayName,
       );
 
+    // "namespace": "Alexa.ThermostatController.HVAC.Components"
+    // Actively Heating, Cooling, or Idle
     this.service
       .getCharacteristic(
         this.platform.Characteristic.CurrentHeatingCoolingState,
       )
-      .onGet(() => this.Characteristic.CurrentHeatingCoolingState.OFF);
+      .onGet(this.handleCurrentStateGet.bind(this));
 
+    //Mode = Heat,Cool,Auto,Off
+    this.service
+      .getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
+      .onGet(this.handleTargetStateGet.bind(this))
+      .onSet(this.handleTargetStateSet.bind(this));
+
+    // Return ambient temperature reading
     this.service
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .onGet(this.handleCurrentTempGet.bind(this));
 
+    // Return ambient humidity reading
+    this.service
+      .getCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity)
+      .onGet(this.handleCurrentHumidGet.bind(this));
+
+    // Farenheit or Celsius
     this.service
       .getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
       .onGet(this.handleTempUnitsGet.bind(this))
-      .onSet(() => {
-        throw this.readOnlyError;
-      });
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
-      .onGet(this.handleTargetStateGet.bind(this))
       .onSet(() => {
         throw this.readOnlyError;
       });
@@ -101,6 +109,27 @@ export default class ThermostatAccessory extends BaseAccessory {
       this.getState(determineCurrentTemp),
       TE.match((e) => {
         this.logWithContext('errorT', 'Get current temperature', e);
+        throw this.serviceCommunicationError;
+      }, identity),
+    )();
+  }
+
+  async handleCurrentHumidGet(): Promise<number> {
+    const alexaNamespace: ThermostatNamespacesType = 'Alexa.HumiditySensor';
+    const determineCurrentHumid = flow(
+      O.filterMap<ThermostatState[], ThermostatState>(
+        A.findFirst(({ namespace }) => namespace === alexaNamespace),
+      ),
+      O.flatMap(({ value }) => tempMapper.mapAlexaHumidToHomeKit(value)),
+      O.tap((s) =>
+        O.of(this.logWithContext('debug', `Get current humidty result: ${s}`)),
+      ),
+    );
+
+    return pipe(
+      this.getState(determineCurrentHumid),
+      TE.match((e) => {
+        this.logWithContext('errorT', 'Get current humidity', e);
         throw this.serviceCommunicationError;
       }, identity),
     )();
@@ -159,6 +188,94 @@ export default class ThermostatAccessory extends BaseAccessory {
     )();
   }
 
+  async handleTargetStateSet(value: CharacteristicValue): Promise<void> {
+    this.logWithContext('debug', `Triggered mode setting: ${value}`);
+    const newMode = tstatMapper.mapHomeKitModetoAlexa(
+      value,
+      this.Characteristic,
+    );
+    return pipe(
+      this.platform.alexaApi.setDeviceState(
+        this.device.id,
+        'setThermostatMode',
+        {
+          'thermostatMode.value': newMode.toString(),
+        },
+      ),
+      TE.match(
+        (e) => {
+          this.logWithContext('errorT', 'Set mode', e);
+          throw this.serviceCommunicationError;
+        },
+        () => {
+          this.updateCacheValue({
+            value: newMode,
+            namespace: 'Alexa.ThermostatController',
+            name: 'thermostatMode',
+          });
+        },
+      ),
+    )();
+  }
+
+  async handleCurrentStateGet(): Promise<number> {
+    const alexaNamespace: ThermostatNamespacesType =
+      'Alexa.ThermostatController.HVAC.Components';
+    const alexaValueName = 'primaryHeaterOperation';
+    //need to add state detection for cooling
+    //Don't know how to "search" or write a proper if/else coniditional in TS
+    //coolerOperation is the "ValueName" when cooling
+    //if in Auto mode both primaryHeaterOperation and coolerOperation values show so need to check both
+    const determineCurrentStateHeat = flow(
+      O.filterMap<ThermostatState[], ThermostatState>(
+        A.findFirst(
+          ({ name, namespace }) =>
+            namespace === alexaNamespace && name === alexaValueName,
+        ),
+      ),
+      O.map(({ value }) =>
+        tstatMapper.mapAlexaHeatingStatusToHomeKit(value, this.Characteristic),
+      ),
+      O.tap((s) =>
+        O.of(
+          this.logWithContext(
+            'debug',
+            `Get thermostat heating state result: ${s}`,
+          ),
+        ),
+      ),
+    );
+    // dummy value just to get build to work until we figure it out
+    return 69 
+    //    const determineCurrentStateCool = flow(
+    //      O.filterMap<ThermostatState[], ThermostatState>(
+    //        A.findFirst(
+    //          ({ name, namespace }) =>
+    //            namespace === alexaNamespace && name === alexaValueName,
+    //        ),
+    //      ),
+    //      O.map(({ value }) =>
+    //        tstatMapper.mapAlexaCoolingStatusToHomeKit(value, this.Characteristic),
+    //      ),
+    //      O.tap((s) =>
+    //        O.of(
+    //          this.logWithContext(
+    //            'debug',
+    //            `Get thermostat cooling state result: ${s}`,
+    //          ),
+    //        ),
+    //      ),
+    //    );
+    //don't know if this would work, only heat or cool can be on at a given time, off = 0, heat = 1, cool = 2
+    //    return pipe(
+    //      this.getState(determineCurrentStateCool + determineCurrentStateHeat),
+    //      TE.match((e) => {
+    //        this.logWithContext('errorT', 'Get thermostat heating state', e);
+    //        throw this.serviceCommunicationError;
+    //      }, identity),
+    //    )();
+  }
+
   async handleTargetTempGet(): Promise<number> {
     const alexaNamespace: ThermostatNamespacesType =
       'Alexa.ThermostatController';
@@ -195,6 +312,8 @@ export default class ThermostatAccessory extends BaseAccessory {
   async handleTargetTempSet(value: CharacteristicValue): Promise<void> {
     this.logWithContext('debug', `Triggered set target temperature: ${value}`);
     const maybeTemp = this.getCacheValue('Alexa.TemperatureSensor');
+    //If received bad data stop
+    //If in Auto mode stop
     if (this.onInvalidOrAutoMode() || !this.isTempWithScale(maybeTemp)) {
       return;
     }
@@ -285,10 +404,10 @@ export default class ThermostatAccessory extends BaseAccessory {
         this.device.id,
         'setTargetTemperature',
         {
-          'upperSetTemperature.scale': units,
-          'upperSetTemperature.value': newCoolTemp.toString(10),
-          'lowerSetTemperature.scale': units,
-          'lowerSetTemperature.value': tempMapper
+          'upperSetpoint.scale': units,
+          'upperSetpoint.value': newCoolTemp.toString(10),
+          'lowerSetpoint.scale': units,
+          'lowerSetpoint.value': tempMapper
             .mapHomeKitTempToAlexa(heatTemp, units)
             .toString(10),
         },
@@ -366,10 +485,10 @@ export default class ThermostatAccessory extends BaseAccessory {
         this.device.id,
         'setTargetTemperature',
         {
-          'lowerSetTemperature.scale': units,
-          'lowerSetTemperature.value': newHeatTemp.toString(10),
-          'upperSetTemperature.scale': units,
-          'upperSetTemperature.value': tempMapper
+          'lowerSetpoint.scale': units,
+          'lowerSetpoint.value': newHeatTemp.toString(10),
+          'upperSetpoint.scale': units,
+          'upperSetpoint.value': tempMapper
             .mapHomeKitTempToAlexa(coolTemp, units)
             .toString(10),
         },

@@ -51,6 +51,9 @@ export const SupportedNamespaces = {
   'Alexa.TemperatureSensor': 'Alexa.TemperatureSensor',
   'Alexa.ThermostatController': 'Alexa.ThermostatController',
   'Alexa.RangeController': 'Alexa.RangeController',
+  'Alexa.HumiditySensor': 'Alexa.HumiditySensor',
+  'Alexa.ThermostatController.HVAC.Components':
+    'Alexa.ThermostatController.HVAC.Components',
 } as const;
 
 export type SupportedNamespacesType = keyof typeof SupportedNamespaces;
@@ -61,6 +64,7 @@ export const SupportedActions = {
   turnOff: 'turnOff',
   setBrightness: 'setBrightness',
   setTargetTemperature: 'setTargetTemperature',
+  setThermostatMode: 'setThermostatMode',
 } as const;
 
 export type SupportedActionsType = keyof typeof SupportedActions;
