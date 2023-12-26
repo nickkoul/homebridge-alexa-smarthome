@@ -18,16 +18,16 @@ export const mapAlexaHeatingStatusToHomeKit = (
   characteristic: typeof Characteristic,
 ) =>
   match(value)
-    .with('OFF', constant(characteristic.TargetHeatingCoolingState.OFF))
-    .otherwise(constant(characteristic.TargetHeatingCoolingState.HEAT));
+    .with('OFF', constant(characteristic.CurrentHeatingCoolingState.OFF))
+    .otherwise(constant(characteristic.CurrentHeatingCoolingState.HEAT));
 
 export const mapAlexaCoolingStatusToHomeKit = (
   value: CapabilityState['value'],
   characteristic: typeof Characteristic,
 ) =>
   match(value)
-    .with('OFF', constant(characteristic.TargetHeatingCoolingState.OFF))
-    .otherwise(constant(characteristic.TargetHeatingCoolingState.COOL));
+    .with('OFF', constant(characteristic.CurrentHeatingCoolingState.OFF))
+    .otherwise(constant(characteristic.CurrentHeatingCoolingState.COOL));
 
 export const mapHomeKitModetoAlexa = (
   value: CharacteristicValue,

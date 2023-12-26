@@ -221,7 +221,10 @@ export default class ThermostatAccessory extends BaseAccessory {
   async handleCurrentStateGet(): Promise<number> {
     const alexaNamespace: ThermostatNamespacesType =
       'Alexa.ThermostatController.HVAC.Components';
-    const alexaValueName = 'primaryHeaterOperation';
+    const alexaValueNameHeat = 'primaryHeaterOperation';
+    const alexaValueNameCool = 'coolerOperation';
+    const thermostatModeOpt = this.getCacheValue('Alexa.ThermostatController', 'thermostatMode');
+
     //need to add state detection for cooling
     //Don't know how to "search" or write a proper if/else coniditional in TS
     //coolerOperation is the "ValueName" when cooling
@@ -230,7 +233,7 @@ export default class ThermostatAccessory extends BaseAccessory {
       O.filterMap<ThermostatState[], ThermostatState>(
         A.findFirst(
           ({ name, namespace }) =>
-            namespace === alexaNamespace && name === alexaValueName,
+            namespace === alexaNamespace && name === alexaValueNameHeat,
         ),
       ),
       O.map(({ value }) =>
@@ -245,36 +248,77 @@ export default class ThermostatAccessory extends BaseAccessory {
         ),
       ),
     );
+
     // dummy value just to get build to work until we figure it out
-    return 69 
-    //    const determineCurrentStateCool = flow(
-    //      O.filterMap<ThermostatState[], ThermostatState>(
-    //        A.findFirst(
-    //          ({ name, namespace }) =>
-    //            namespace === alexaNamespace && name === alexaValueName,
-    //        ),
-    //      ),
-    //      O.map(({ value }) =>
-    //        tstatMapper.mapAlexaCoolingStatusToHomeKit(value, this.Characteristic),
-    //      ),
-    //      O.tap((s) =>
-    //        O.of(
-    //          this.logWithContext(
-    //            'debug',
-    //            `Get thermostat cooling state result: ${s}`,
-    //          ),
-    //        ),
-    //      ),
-    //    );
+    const determineCurrentStateCool = flow(
+      O.filterMap<ThermostatState[], ThermostatState>(
+        A.findFirst(
+          ({ name, namespace }) =>
+            namespace === alexaNamespace && name === alexaValueNameCool,
+        ),
+      ),
+      O.map(({ value }) =>
+        tstatMapper.mapAlexaCoolingStatusToHomeKit(value, this.Characteristic),
+      ),
+      O.tap((s) =>
+        O.of(
+          this.logWithContext(
+            'debug',
+            `Get thermostat cooling state result: ${s}`,
+          ),
+        ),
+      ),
+    );
+
+    const determineCurrentStateOfforOther = flow(
+      O.map<ThermostatState[], number>(() => 0),
+    );
+
+
+    const determineCurrentStateAuto = flow(
+      O.map<ThermostatState[], number>(thermostatStateArr => {
+        return thermostatStateArr.reduce<number>((curSum, {namespace, name}) => {
+          if(namespace === alexaNamespace && name === alexaValueNameHeat){
+            console.info('NICK debug AUTO', curSum += 1);
+            return curSum += 1;
+          }else if (namespace === alexaNamespace && name === alexaValueNameCool){
+            console.info('NICK debug AUTO', curSum += 2);
+            return curSum += 2;
+          }
+          console.info('NICK debug AUTO', curSum);
+          return curSum;
+        }, 0);
+      }),
+    );
+
+
+    const getStateFun = (thermostatModeOpt: Option<CapabilityState['value']>): (fa: O.Option<ThermostatState[]>) => O.Option<number> => {
+      if(O.isSome(thermostatModeOpt)) {
+        const thermostatModeVal = thermostatModeOpt.value;
+        if (thermostatModeVal === 'HEAT'){
+          return determineCurrentStateHeat;
+        }else if (thermostatModeVal === 'COOL'){
+          return determineCurrentStateCool;
+        }else if(thermostatModeVal === 'AUTO') {
+          return determineCurrentStateAuto;
+        }else {
+          return determineCurrentStateOfforOther;
+        }
+      }else {
+        return determineCurrentStateOfforOther;
+      }
+    };
+
     //don't know if this would work, only heat or cool can be on at a given time, off = 0, heat = 1, cool = 2
-    //    return pipe(
-    //      this.getState(determineCurrentStateCool + determineCurrentStateHeat),
-    //      TE.match((e) => {
-    //        this.logWithContext('errorT', 'Get thermostat heating state', e);
-    //        throw this.serviceCommunicationError;
-    //      }, identity),
-    //    )();
+    return pipe(
+      this.getState(getStateFun(thermostatModeOpt)),
+      TE.match((e) => {
+        this.logWithContext('errorT', 'Get thermostat heating state', e);
+        throw this.serviceCommunicationError;
+      }, identity),
+    )();
   }
+
 
   async handleTargetTempGet(): Promise<number> {
     const alexaNamespace: ThermostatNamespacesType =
