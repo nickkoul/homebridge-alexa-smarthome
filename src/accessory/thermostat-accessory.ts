@@ -46,7 +46,6 @@ export default class ThermostatAccessory extends BaseAccessory {
         this.device.displayName,
       );
 
-    // "namespace": "Alexa.ThermostatController.HVAC.Components"
     // Actively Heating, Cooling, or Idle
     this.service
       .getCharacteristic(
@@ -65,7 +64,6 @@ export default class ThermostatAccessory extends BaseAccessory {
       .getCharacteristic(this.Characteristic.CurrentTemperature)
       .onGet(this.handleCurrentTempGet.bind(this));
 
-    // Return ambient humidity reading
     this.service
       .getCharacteristic(this.Characteristic.TemperatureDisplayUnits)
       .onGet(this.handleTempUnitsGet.bind(this))
@@ -314,7 +312,10 @@ export default class ThermostatAccessory extends BaseAccessory {
       'Alexa.ThermostatController.HVAC.Components';
     const alexaValueNameHeat = 'primaryHeaterOperation';
     const alexaValueNameCool = 'coolerOperation';
-    const thermostatModeOpt = this.getCacheValue('Alexa.ThermostatController', 'thermostatMode');
+    const thermostatModeOpt = this.getCacheValue(
+      'Alexa.ThermostatController',
+      'thermostatMode',
+    );
 
     //need to add state detection for cooling
     //Don't know how to "search" or write a proper if/else coniditional in TS
@@ -365,37 +366,43 @@ export default class ThermostatAccessory extends BaseAccessory {
       O.map<ThermostatState[], number>(() => 0),
     );
 
-
     const determineCurrentStateAuto = flow(
-      O.map<ThermostatState[], number>(thermostatStateArr => {
-        return thermostatStateArr.reduce<number>((curSum, {namespace, name}) => {
-          if(namespace === alexaNamespace && name === alexaValueNameHeat){
-            console.info('NICK debug AUTO', curSum += 1);
-            return curSum += 1;
-          }else if (namespace === alexaNamespace && name === alexaValueNameCool){
-            console.info('NICK debug AUTO', curSum += 2);
-            return curSum += 2;
-          }
-          console.info('NICK debug AUTO', curSum);
-          return curSum;
-        }, 0);
+      O.map<ThermostatState[], number>((thermostatStateArr) => {
+        return thermostatStateArr.reduce<number>(
+          (curSum, { namespace, name }) => {
+            if (namespace === alexaNamespace && name === alexaValueNameHeat) {
+              console.info('NICK debug AUTO', (curSum += 1));
+              return (curSum += 1);
+            } else if (
+              namespace === alexaNamespace &&
+              name === alexaValueNameCool
+            ) {
+              console.info('NICK debug AUTO', (curSum += 2));
+              return (curSum += 2);
+            }
+            console.info('NICK debug AUTO', curSum);
+            return curSum;
+          },
+          0,
+        );
       }),
     );
 
-
-    const getStateFun = (thermostatModeOpt: Option<CapabilityState['value']>): (fa: O.Option<ThermostatState[]>) => O.Option<number> => {
-      if(O.isSome(thermostatModeOpt)) {
+    const getStateFun = (
+      thermostatModeOpt: Option<CapabilityState['value']>,
+    ): ((fa: O.Option<ThermostatState[]>) => O.Option<number>) => {
+      if (O.isSome(thermostatModeOpt)) {
         const thermostatModeVal = thermostatModeOpt.value;
-        if (thermostatModeVal === 'HEAT'){
+        if (thermostatModeVal === 'HEAT') {
           return determineCurrentStateHeat;
-        }else if (thermostatModeVal === 'COOL'){
+        } else if (thermostatModeVal === 'COOL') {
           return determineCurrentStateCool;
-        }else if(thermostatModeVal === 'AUTO') {
+        } else if (thermostatModeVal === 'AUTO') {
           return determineCurrentStateAuto;
-        }else {
+        } else {
           return determineCurrentStateOfforOther;
         }
-      }else {
+      } else {
         return determineCurrentStateOfforOther;
       }
     };
@@ -409,7 +416,6 @@ export default class ThermostatAccessory extends BaseAccessory {
       }, identity),
     )();
   }
-
 
   async handleTargetTempGet(): Promise<number> {
     const alexaNamespace: ThermostatNamespacesType =
